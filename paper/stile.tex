@@ -1,0 +1,27 @@
+% Shared preamble for the RESEARCH blog papers and their Italian explainers.
+% Usage (after \documentclass[a4paper,11pt]{article} and \usepackage[<lang>]{babel}):
+%   \input{../stile}
+% Compile with: latexmk -xelatex -interaction=nonstopmode -halt-on-error <file>.tex
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{csquotes}
+\usepackage{microtype}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{float}
+\usepackage[skip=0.5\baselineskip plus 2pt]{parskip}
+\usepackage{setspace}
+\setstretch{1.12}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usepgfplotslibrary{groupplots}
+\usepackage{caption}
+\captionsetup{font=small,labelfont=sc}
+\usepackage[hidelinks]{hyperref}
+\widowpenalty=10000
+\clubpenalty=10000
+\setlength{\emergencystretch}{2em}
+\newcommand{\bp}{\,\mathrm{bp}}

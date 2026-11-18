@@ -1,0 +1,77 @@
+\documentclass[a4paper,11pt]{article}
+\usepackage[italian]{babel}
+\input{../stile}
+
+\title{Un elastico che tira di più quando è teso\\[0.3em] \large Spiegazione semplice del modello di Hawkes dipendente dallo stato}
+\author{Tommaso Zeri}
+\date{Novembre 2026}
+
+\begin{document}
+\maketitle
+
+\section*{Di che cosa parliamo}
+
+Su Binance il Bitcoin si compra in due modi. C'è lo \emph{spot}, dove si compra la moneta vera e propria, e c'è il \emph{perpetual}, un contratto che ne segue il prezzo senza scadenza. I due prezzi dovrebbero coincidere quasi sempre, perché se si allontanano qualcuno compra quello che costa meno e vende quello che costa di più. La piccola differenza tra i due prezzi si chiama \emph{basis}. In questi dati oscilla di circa un basis point (un centesimo di punto percentuale) intorno a un livello che cambia lentamente, nell'arco di ore.
+
+Si può pensare alla basis come a un elastico che tiene legati i due prezzi. Quando uno dei due scatta in avanti, l'elastico si tende, e prima o poi l'altro prezzo lo raggiunge. La domanda di questo lavoro è come e con quale velocità l'elastico riporta indietro i due prezzi.
+
+\section*{Il modello di partenza}
+
+Il modello guarda i movimenti dei prezzi come una sequenza di \emph{eventi}: ogni volta che uno dei due prezzi si sposta di almeno mezzo basis point, si registra un evento, che può essere perpetual su, perpetual giù, spot su oppure spot giù. Un processo di Hawkes descrive come ogni evento renda più probabili altri eventi subito dopo, un po' come una scossa di terremoto che rende più probabili le scosse di assestamento. Un movimento del perpetual verso l'alto, per esempio, rende più probabile che anche lo spot salga nei millisecondi successivi: è l'altro capo dell'elastico che segue.
+
+Questo modello capisce bene la struttura del fenomeno. Sa che una parte di un movimento del perpetual resta (il prezzo è davvero cambiato) e una parte viene riassorbita quando lo spot si riallinea. Sbaglia però la velocità. Nei dati la metà del riallineamento avviene in circa 1,4--4,4 secondi; il modello ci mette da due a sette volte di più. C'è poi un limite più profondo. Il modello reagisce solo agli eventi recenti e non sa dove si trova la basis. Se la basis è già larga prima di un evento, il modello non ha nessuna forza che la riporti al suo livello, mentre nei dati quella distanza sparisce da sola nel giro di pochi minuti.
+
+\section*{L'idea: un elastico che tira in proporzione a quanto è teso}
+
+Un elastico vero tira tanto più forte quanto più è teso. Il modello di partenza no: tira sempre con la stessa forza, comunque stiano le cose. L'estensione descritta nell'articolo corregge proprio questo. Ogni volta che avviene un evento, si guarda lo \emph{stato} del mercato in quel momento, cioè due cose: di quanto la basis è lontana dal suo livello, e in quale direzione la sposta l'evento (la \emph{deviazione con segno}), e quanto è agitato il mercato (la volatilità). Una piccola rete neurale prende questi due numeri e restituisce dei moltiplicatori. Se il moltiplicatore vale 2, l'effetto dell'evento sugli eventi successivi è raddoppiato; se vale 0,5 è dimezzato. In formula, l'effetto di un evento diventa
+\[
+\text{effetto} = \text{effetto del modello di partenza} \times m(\text{stato}),
+\]
+dove $m$ è sempre positivo e, per costruzione, non può superare 10 né scendere sotto un decimo.
+
+La rete è molto piccola: 28 numeri da stimare in tutto. Il vantaggio di questa scelta è che il modello resta trasparente. Quando la rete restituisce sempre 1 si ritrova esattamente il modello di partenza, e il calcolo della likelihood, cioè della misura di quanto il modello spiega bene i dati osservati, resta esatto e veloce.
+
+\section*{Che cosa si è scoperto}
+
+Il modello è stato provato su dodici giornate (dieci di Bitcoin e due di Ethereum, tra dicembre 2022 e settembre 2026), divise in finestre di quattro ore. Ogni finestra serve a stimare il modello, e la finestra successiva, che il modello non ha mai visto, serve a giudicarlo (\emph{out-of-sample}). Su 60 confronti di questo tipo il nuovo modello spiega i dati meglio del vecchio in 56.
+
+La rete ha imparato da sola lo stesso comportamento in tutte le giornate. Quando un movimento allarga una basis che è già lontana dal suo livello, l'altro prezzo lo segue con più forza del solito: il moltiplicatore va da circa 1,3 a 2,3. Quando invece un movimento riporta la basis verso il livello, l'altro prezzo lo segue meno (moltiplicatore tra 0,5 e 0,75), e così non riapre la distanza appena chiusa. È proprio l'elastico che tira di più quando è teso.
+
+Nello stato in cui la basis viene allargata il sistema arriva vicino alla \emph{criticità}: ogni evento genera in media quasi un altro evento, o anche di più, e le reazioni a catena diventano lunghe. Quando la basis è al suo livello, invece, il sistema è tranquillo e le catene si spengono in fretta.
+
+\section*{Allenare per prevedere o allenare per decidere}
+
+Il modello si può usare per prevedere come cambierà la basis nei dieci secondi successivi, e quindi per decidere se aprire una posizione. Qui c'è una scelta di fondo su che cosa chiedere alla rete durante l'allenamento.
+
+La prima possibilità è chiederle di descrivere il più fedelmente possibile il ritmo di tutti gli eventi, uno per uno. È ciò che fa la likelihood. È come allenare un meteorologo a descrivere ogni nuvola del cielo: lavoro utile, ma chi deve decidere se portare l'ombrello vuole solo sapere se pioverà nel pomeriggio. La seconda possibilità è allenare la rete direttamente sulla decisione: sull'errore della previsione a dieci secondi, oppure su una versione morbida del guadagno che la previsione avrebbe prodotto.
+
+Con la sola likelihood il segnale guadagna un po' meno per operazione rispetto al modello di partenza (in media 0,37 contro 0,44 basis point) ma opera più spesso, circa 3.300 volte al giorno contro 2.300. Allenando la rete per la decisione il guadagno lordo al giorno aumenta di due o tre volte, con un margine per operazione uguale o più alto. Le due varianti però non si comportano allo stesso modo. Quella allenata sull'errore di previsione dà previsioni della grandezza giusta. Quella allenata sul guadagno indovina meglio la direzione ma esagera la grandezza, e va ricalibrata prima di essere usata.
+
+C'è un limite pratico che nessuna variante supera: tutti questi guadagni sono \emph{lordi}, cioè prima delle commissioni. Mezzo basis point per operazione è meno di quanto costi operare su entrambi i mercati a qualunque livello di commissioni di Binance. Questo è un lavoro di ricerca e non un consiglio di investimento.
+
+\section*{I limiti, detti chiaramente}
+
+I 28 numeri della rete e le sue impostazioni sono stati scelti guardando una sola giornata (1 marzo 2026), che compare anche tra i risultati. Quando lo stato è molto lontano dal solito, oltre due volte la sua variabilità tipica, la rete lavora su pochi esempi e sta di fatto tirando a indovinare; l'unica giornata in cui il segnale perde (1 gennaio 2024) è proprio un caso del genere. Vicino alla criticità le formule chiuse del modello, calcolate tenendo fermo lo stato, smettono di essere affidabili e vanno lette come indicazioni di direzione.
+
+\section*{Piccolo glossario}
+
+\begin{description}
+\item[Basis.] La differenza tra il prezzo del perpetual e quello dello spot.
+\item[Basis point (bp).] Un centesimo di punto percentuale, cioè 0,01\%. Su un Bitcoin da 60.000 dollari vale 6 dollari.
+\item[Deviazione.] Quanto la basis è lontana dal suo livello abituale in un dato momento. \emph{Con segno} vuol dire che si tiene conto anche della direzione: se l'evento allarga la distanza o la riduce.
+\item[Processo di Hawkes.] Un modello per eventi che si autoalimentano: ogni evento rende più probabili altri eventi per un breve periodo.
+\item[Rete neurale.] Una funzione flessibile, con dei numeri regolabili, che impara dai dati come trasformare un ingresso (qui lo stato del mercato) in un'uscita (qui i moltiplicatori).
+\item[Likelihood.] Un punteggio che dice quanto sono plausibili i dati osservati secondo il modello. Più è alto, meglio il modello li spiega.
+\item[Out-of-sample.] Valutare un modello su dati che non ha usato per la stima, per evitare che si limiti a imparare a memoria.
+\item[Criticità.] La soglia oltre la quale ogni evento genera in media almeno un altro evento, e le catene di reazioni non si spengono da sole.
+\item[Lordo.] Prima di togliere le commissioni pagate all'exchange.
+\end{description}
+
+\section*{Cosa portare a casa}
+
+Il modello di partenza sa chi segue chi tra perpetual e spot, ma non sa quanto sono lontani i due prezzi, e per questo riporta la basis al suo posto troppo lentamente. Basta lasciare che la forza con cui un prezzo segue l'altro dipenda da quanto l'elastico è teso, con una rete neurale piccola e controllata, per ottenere un modello che spiega meglio i dati quasi ovunque e che ritrova da solo lo stesso meccanismo in ogni giornata. Per usare il modello in una decisione conviene allenarlo su quella decisione e non solo sulla descrizione degli eventi. Anche così il guadagno resta sotto il costo delle commissioni.
+
+\vspace{1em}
+\noindent\textit{Questa spiegazione si basa sulla tesi magistrale dell'autore.}
+
+\end{document}
